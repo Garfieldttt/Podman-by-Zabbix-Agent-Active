@@ -84,7 +84,7 @@ There are no template links in this template.
 
 |Name|Description|Type|Key and additional info|
 |----|-----------|----|----|
-|Podman: raw data|Master item — full JSON from collector script|`Zabbix agent (active)`|`vfs.file.contents[/var/log/podman.json]`<p>Update: {$PODMAN.UPDATE.INTERVAL}</p>|
+|Podman: raw data|Master item full JSON from collector script|`Zabbix agent (active)`|`vfs.file.contents[/var/log/podman.json]`<p>Update: {$PODMAN.UPDATE.INTERVAL}</p>|
 |Podman: last collection timestamp|Timestamp of last successful collector run|`Dependent item`|`podman.collected_at`<p>Update: 0</p>|
 |Podman: collector version|Version of the collector script|`Dependent item`|`podman.collector_version`<p>Update: 0</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): state|Container state: running / exited / paused / created|`Dependent item`|`podman.container.state[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
@@ -123,7 +123,7 @@ There are no template links in this template.
 
 |Name|Description|Expression|Priority|
 |----|-----------|----------|--------|
-|Podman: collector data not updated for {$PODMAN.NODATA.TIMEOUT}|JSON file not refreshed — collector may have stopped|`nodata(/Podman by Zabbix Agent Active/vfs.file.contents[/var/log/podman.json],{$PODMAN.NODATA.TIMEOUT})=1`|Warning|
+|Podman: collector data not updated for {$PODMAN.NODATA.TIMEOUT}|JSON file not refreshed collector may have stopped|`nodata(/Podman by Zabbix Agent Active/vfs.file.contents[/var/log/podman.json],{$PODMAN.NODATA.TIMEOUT})=1`|Warning|
 |Container [{#CONTAINER_NAME}] ({#USER}): not running|Container is in an unexpected state (not running and not exited)|`last(/.../podman.container.state[...]))<>"running" and last(/.../podman.container.state[...])<>"exited"`|High|
 |Container [{#CONTAINER_NAME}] ({#USER}): exited with error|Container exited with a non-zero exit code|`last(/.../podman.container.state[...])="exited" and last(/.../podman.container.exitcode[...])>0`|Average|
 |Container [{#CONTAINER_NAME}] ({#USER}): restarted|Restart count has increased|`change(/.../podman.container.restarts[...])>0`|Warning|
@@ -134,11 +134,6 @@ There are no template links in this template.
 |Pod [{#POD_NAME}] ({#USER}): not running|Pod is not in Running or Degraded state|`last(/.../podman.pod.status[...])<>"Running" and last(/.../podman.pod.status[...])<>"Degraded"`|High|
 |Pod [{#POD_NAME}] ({#USER}): degraded|Some containers in the pod are not running|`last(/.../podman.pod.status[...])="Degraded"`|Average|
 |User [{#USER}]: storage usage high|Used/Allocated storage > {$PODMAN.STORE.CRIT}%|`last(.../store.allocated[...])>0 and last(.../store.used[...])/last(.../store.allocated[...])*100>{$PODMAN.STORE.CRIT}`|Warning|
-|User [{#USER}]: {ITEM.LASTVALUE1} unused images|Unused image count > {$PODMAN.IMAGES.UNUSED.MAX} — consider running `podman image prune`|`last(/.../podman.user.images.unused[...])>{$PODMAN.IMAGES.UNUSED.MAX}`|Info|
-
-## Tested with
-
-- Podman 4.9.x / 5.x on Debian 13
-- Zabbix 7.0 LTS
+|User [{#USER}]: {ITEM.LASTVALUE1} unused images|Unused image count > {$PODMAN.IMAGES.UNUSED.MAX} consider running `podman image prune`|`last(/.../podman.user.images.unused[...])>{$PODMAN.IMAGES.UNUSED.MAX}`|Info|
 
 Other distributions have not been tested.
