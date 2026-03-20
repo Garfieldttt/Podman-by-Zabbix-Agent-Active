@@ -9,8 +9,6 @@ The collector script (`scripts/zabbix_podman_collect.sh`) runs every minute as r
 ## Requirements
 
 - Zabbix Agent (active) ≥ 7.0
-- Podman ≥ 4.0
-- Python 3
 - Linux with rootless Podman support (tested on Debian 13; other distributions not tested)
 
 ## Setup
@@ -135,5 +133,3 @@ There are no template links in this template.
 |Pod [{#POD_NAME}] ({#USER}): degraded|Some containers in the pod are not running|`last(/.../podman.pod.status[...])="Degraded"`|Average|
 |User [{#USER}]: storage usage high|Used/Allocated storage > {$PODMAN.STORE.CRIT}%|`last(.../store.allocated[...])>0 and last(.../store.used[...])/last(.../store.allocated[...])*100>{$PODMAN.STORE.CRIT}`|Warning|
 |User [{#USER}]: {ITEM.LASTVALUE1} unused images|Unused image count > {$PODMAN.IMAGES.UNUSED.MAX} consider running `podman image prune`|`last(/.../podman.user.images.unused[...])>{$PODMAN.IMAGES.UNUSED.MAX}`|Info|
-
-Other distributions have not been tested.
