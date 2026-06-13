@@ -10,7 +10,7 @@ zabbix_export:
       description: |
         Monitors rootful and rootless Podman containers via a central JSON collector script.
         Requires zabbix_podman_collect.sh (v3) running as root via cron (every 60s).
-
+        
         Collector output: /var/log/podman.json
         Supports multiple rootless users + root on the same host.
         Uses runuser-based isolation (no DOCKER_HOST fallback to root daemon).
@@ -68,8 +68,8 @@ zabbix_export:
               expression: 'nodata(/Podman by Zabbix Agent Active/vfs.file.contents[/var/log/podman.json],{$PODMAN.NODATA.TIMEOUT})=1'
               name: 'Podman: collector data not updated for {$PODMAN.NODATA.TIMEOUT}'
               priority: WARNING
-              manual_close: 'YES'
               description: 'The collector script has not written a new /var/log/podman.json for {$PODMAN.NODATA.TIMEOUT}. Check if the cron job is running: systemctl status cron, and verify the script manually: /usr/local/bin/zabbix_podman_collect.sh'
+              manual_close: 'YES'
               tags:
                 - tag: component
                   value: system
@@ -93,6 +93,86 @@ zabbix_export:
             Discovers all containers across all rootless Podman users.
             Infra containers (pod infrastructure) are automatically excluded.
           item_prototypes:
+            - uuid: b9e5730650ba44bd94bf81304f863b51
+              name: 'Container [{#CONTAINER_NAME}]: avg CPU usage'
+              type: DEPENDENT
+              key: 'podman.container.avg_cpu[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: '%'
+              description: 'Average CPU usage percent since container start.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].avg_cpu.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 0%
+                - type: REGEX
+                  parameters:
+                    - '(\d+\.?\d*)%'
+                    - \1
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
+            - uuid: ad6edc85f05e48189474abdaa91ae3a0
+              name: 'Container [{#CONTAINER_NAME}]: block read'
+              type: DEPENDENT
+              key: 'podman.container.block.in[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              units: Bps
+              description: 'Cumulative block device bytes read.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].block_input.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
+            - uuid: 739c00eb959f48b8bff173435f676517
+              name: 'Container [{#CONTAINER_NAME}]: block write'
+              type: DEPENDENT
+              key: 'podman.container.block.out[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              units: Bps
+              description: 'Cumulative block device bytes written.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].block_output.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
             - uuid: e5c57ac1fa354be7a2eee25b9d48fe79
               name: 'Container [{#CONTAINER_NAME}]: block I/O'
               type: DEPENDENT
@@ -107,7 +187,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].block_io.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -145,8 +224,8 @@ zabbix_export:
                   expression: 'avg(/Podman by Zabbix Agent Active/podman.container.cpu[{#CONTAINER_NAME},{#USER}],5m)>{$PODMAN.CPU.CRIT}'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): CPU high (>{$PODMAN.CPU.CRIT}% for 5m)'
                   priority: WARNING
-                  manual_close: 'YES'
                   description: 'Container CPU usage has exceeded {$PODMAN.CPU.CRIT}% on average over 5 minutes. Check logs: podman logs {#CONTAINER_NAME}. Adjust the threshold via macro {$PODMAN.CPU.CRIT} if the container is expected to run at high CPU.'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
@@ -165,6 +244,27 @@ zabbix_export:
                     - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].ExitCode.first()'
                   error_handler: CUSTOM_VALUE
                   error_handler_params: '0'
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
+            - uuid: 7ea6acad4f9b43eeb91374d5ad54041f
+              name: 'Container [{#CONTAINER_NAME}]: finished at'
+              type: DEPENDENT
+              key: 'podman.container.finished_at[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: 'Timestamp when the container last stopped (ISO 8601).'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].State.FinishedAt.first()'
+                  error_handler: CUSTOM_VALUE
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -189,7 +289,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].State.Health.Status.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -205,8 +304,8 @@ zabbix_export:
                   expression: 'last(/Podman by Zabbix Agent Active/podman.container.health[{#CONTAINER_NAME},{#USER}])="unhealthy"'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): health check failing'
                   priority: AVERAGE
-                  manual_close: 'YES'
                   description: 'The container health check is reporting "unhealthy". Check the health check output: podman inspect --format "{{"{{"}}json .State.Health{{"}}"}}" {#CONTAINER_NAME}. Review container logs: podman logs {#CONTAINER_NAME}'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
@@ -226,7 +325,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].Config.Image.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -326,13 +424,37 @@ zabbix_export:
                   expression: 'avg(/Podman by Zabbix Agent Active/podman.container.mem.pct[{#CONTAINER_NAME},{#USER}],5m)>{$PODMAN.MEM.CRIT}'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): memory high (>{$PODMAN.MEM.CRIT}% for 5m)'
                   priority: WARNING
-                  manual_close: 'YES'
                   description: 'Container memory usage has exceeded {$PODMAN.MEM.CRIT}% of its limit on average over 5 minutes. Check current usage: podman stats --no-stream {#CONTAINER_NAME}. Consider increasing the memory limit or investigating a memory leak.'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
                     - tag: container
                       value: '{#CONTAINER_NAME}'
+            - uuid: 5933312ac93c41f59a8640a473841e20
+              name: 'Container [{#CONTAINER_NAME}]: memory used'
+              type: DEPENDENT
+              key: 'podman.container.mem.used[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              units: B
+              description: 'Memory usage in bytes.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].mem_usage.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
             - uuid: 7d5603af28b24e57a1703dfe1b932d1f
               name: 'Container [{#CONTAINER_NAME}]: mounts'
               type: DEPENDENT
@@ -366,6 +488,60 @@ zabbix_export:
                   value: container
                 - tag: container
                   value: '{#CONTAINER_NAME}'
+            - uuid: c15f501d1725410e8747a8f4f428f32a
+              name: 'Container [{#CONTAINER_NAME}]: network in'
+              type: DEPENDENT
+              key: 'podman.container.net.in[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              units: Bps
+              description: 'Cumulative network bytes received.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].net_input.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
+            - uuid: 7322d4305ec74b42ba1f49e5113b1de8
+              name: 'Container [{#CONTAINER_NAME}]: network out'
+              type: DEPENDENT
+              key: 'podman.container.net.out[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              units: Bps
+              description: 'Cumulative network bytes sent.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].net_output.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+                - type: CHANGE_PER_SECOND
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
             - uuid: 07dea4cbbc4c459bbacc6e2ad1dc6317
               name: 'Container [{#CONTAINER_NAME}]: network I/O'
               type: DEPENDENT
@@ -380,7 +556,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].net_io.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -438,6 +613,8 @@ zabbix_export:
                   error_handler: CUSTOM_VALUE
                   error_handler_params: 'false'
                 - type: BOOL_TO_DECIMAL
+                  parameters:
+                    - ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -453,8 +630,8 @@ zabbix_export:
                   expression: 'last(/Podman by Zabbix Agent Active/podman.container.oom_killed[{#CONTAINER_NAME},{#USER}])=1'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): killed by OOM killer'
                   priority: AVERAGE
-                  manual_close: 'YES'
                   description: 'The container was terminated by the Linux OOM killer because it exceeded available memory. Check system memory: free -h. Consider setting or increasing the container memory limit, or investigate a memory leak: podman logs {#CONTAINER_NAME}'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
@@ -505,120 +682,19 @@ zabbix_export:
                   value: container
                 - tag: container
                   value: '{#CONTAINER_NAME}'
-            - uuid: 5933312ac93c41f59a8640a473841e20
-              name: 'Container [{#CONTAINER_NAME}]: memory used'
+            - uuid: 2d35d4c89a6f4184929bbaf6dc83d210
+              name: 'Container [{#CONTAINER_NAME}]: PID'
               type: DEPENDENT
-              key: 'podman.container.mem.used[{#CONTAINER_NAME},{#USER}]'
+              key: 'podman.container.pid[{#CONTAINER_NAME},{#USER}]'
               delay: '0'
               history: 7d
-              units: B
-              description: 'Memory usage in bytes.'
+              description: 'Main process PID. 0 if container is stopped.'
               preprocessing:
                 - type: JSONPATH
                   parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].mem_usage.first()'
+                    - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].Pid.first()'
                   error_handler: CUSTOM_VALUE
                   error_handler_params: '0'
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: c15f501d1725410e8747a8f4f428f32a
-              name: 'Container [{#CONTAINER_NAME}]: network in'
-              type: DEPENDENT
-              key: 'podman.container.net.in[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              units: Bps
-              description: 'Cumulative network bytes received.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].net_input.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-                - type: CHANGE_PER_SECOND
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: 7322d4305ec74b42ba1f49e5113b1de8
-              name: 'Container [{#CONTAINER_NAME}]: network out'
-              type: DEPENDENT
-              key: 'podman.container.net.out[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              units: Bps
-              description: 'Cumulative network bytes sent.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].net_output.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-                - type: CHANGE_PER_SECOND
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: ad6edc85f05e48189474abdaa91ae3a0
-              name: 'Container [{#CONTAINER_NAME}]: block read'
-              type: DEPENDENT
-              key: 'podman.container.block.in[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              units: Bps
-              description: 'Cumulative block device bytes read.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].block_input.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-                - type: CHANGE_PER_SECOND
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: 739c00eb959f48b8bff173435f676517
-              name: 'Container [{#CONTAINER_NAME}]: block write'
-              type: DEPENDENT
-              key: 'podman.container.block.out[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              units: Bps
-              description: 'Cumulative block device bytes written.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].block_output.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-                - type: CHANGE_PER_SECOND
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -707,6 +783,32 @@ zabbix_export:
                   value: container
                 - tag: container
                   value: '{#CONTAINER_NAME}'
+            - uuid: db92ee03dcb94faabc5809c5cb8c0ae6
+              name: 'Container [{#CONTAINER_NAME}]: read-only rootfs'
+              type: DEPENDENT
+              key: 'podman.container.readonly[{#CONTAINER_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              description: '1 if container filesystem is read-only, 0 otherwise.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].HostConfig.ReadonlyRootfs.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: BOOL_TO_DECIMAL
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: container
+                - tag: container
+                  value: '{#CONTAINER_NAME}'
             - uuid: 340d362f8afa4454ab4f3e0816340974
               name: 'Container [{#CONTAINER_NAME}]: restart count'
               type: DEPENDENT
@@ -734,8 +836,8 @@ zabbix_export:
                   expression: 'change(/Podman by Zabbix Agent Active/podman.container.restarts[{#CONTAINER_NAME},{#USER}])>0'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): restarted (count: {ITEM.LASTVALUE1})'
                   priority: WARNING
-                  manual_close: 'YES'
                   description: 'The container restart count has increased. Check the reason for the restart: podman logs {#CONTAINER_NAME}. If the container is crash-looping, investigate the application or resource limits.'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
@@ -780,7 +882,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].State.StartedAt.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -804,7 +905,7 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].State.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: 'unknown'
+                  error_handler_params: unknown
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -820,111 +921,13 @@ zabbix_export:
                   expression: 'last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])<>"running" and last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])<>"exited"'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): not running (state: {ITEM.LASTVALUE1})'
                   priority: HIGH
-                  manual_close: 'YES'
                   description: 'Container is in an unexpected state (not "running" and not "exited"). Current state: {ITEM.LASTVALUE1}. Investigate: podman inspect {#CONTAINER_NAME}. Start if needed: podman start {#CONTAINER_NAME}'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: container
                     - tag: container
                       value: '{#CONTAINER_NAME}'
-            - uuid: b9e5730650ba44bd94bf81304f863b51
-              name: 'Container [{#CONTAINER_NAME}]: avg CPU usage'
-              type: DEPENDENT
-              key: 'podman.container.avg_cpu[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: FLOAT
-              units: '%'
-              description: 'Average CPU usage percent since container start.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].stats[?(@.name=="{#CONTAINER_NAME}")].avg_cpu.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0%'
-                - type: REGEX
-                  parameters:
-                    - '(\d+\.?\d*)%'
-                    - \1
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: 7ea6acad4f9b43eeb91374d5ad54041f
-              name: 'Container [{#CONTAINER_NAME}]: finished at'
-              type: DEPENDENT
-              key: 'podman.container.finished_at[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: TEXT
-              trends: '0'
-              description: 'Timestamp when the container last stopped (ISO 8601).'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].State.FinishedAt.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: 2d35d4c89a6f4184929bbaf6dc83d210
-              name: 'Container [{#CONTAINER_NAME}]: PID'
-              type: DEPENDENT
-              key: 'podman.container.pid[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              description: 'Main process PID. 0 if container is stopped.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].Pid.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
-            - uuid: db92ee03dcb94faabc5809c5cb8c0ae6
-              name: 'Container [{#CONTAINER_NAME}]: read-only rootfs'
-              type: DEPENDENT
-              key: 'podman.container.readonly[{#CONTAINER_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              description: '1 if container filesystem is read-only, 0 otherwise.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].container_inspects[?(@.Id=="{#CONTAINER_ID}")].HostConfig.ReadonlyRootfs.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'false'
-                - type: BOOL_TO_DECIMAL
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: container
-                - tag: container
-                  value: '{#CONTAINER_NAME}'
             - uuid: 8be70aa8a845413b82f77b4cfacbc92f
               name: 'Container [{#CONTAINER_NAME}]: status text'
               type: DEPENDENT
@@ -939,7 +942,7 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].Status.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: 'unknown'
+                  error_handler_params: unknown
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -955,19 +958,42 @@ zabbix_export:
               expression: 'last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])="exited" and last(/Podman by Zabbix Agent Active/podman.container.exitcode[{#CONTAINER_NAME},{#USER}])>0'
               name: 'Container [{#CONTAINER_NAME}] ({#USER}): exited with error (code: {ITEM.LASTVALUE2})'
               priority: AVERAGE
-              manual_close: 'YES'
               description: 'Container exited with a non-zero exit code ({ITEM.LASTVALUE2}). Check logs for the reason: podman logs {#CONTAINER_NAME}. Common codes: 1=application error, 137=OOM/SIGKILL, 143=SIGTERM.'
+              manual_close: 'YES'
               tags:
                 - tag: component
                   value: container
                 - tag: container
                   value: '{#CONTAINER_NAME}'
           graph_prototypes:
+            - uuid: 1160d9e8b2e8417298b59deacddaf85b
+              name: 'Container [{#CONTAINER_NAME}] ({#USER}): block I/O'
+              graph_items:
+                - color: 1A7C11
+                  item:
+                    host: 'Podman by Zabbix Agent Active'
+                    key: 'podman.container.block.in[{#CONTAINER_NAME},{#USER}]'
+                - sortorder: '1'
+                  color: E53935
+                  item:
+                    host: 'Podman by Zabbix Agent Active'
+                    key: 'podman.container.block.out[{#CONTAINER_NAME},{#USER}]'
+            - uuid: 0ac706d7ccba4b7fb0e1b2c137d53ad0
+              name: 'Container [{#CONTAINER_NAME}] ({#USER}): network I/O'
+              graph_items:
+                - color: 1A7C11
+                  item:
+                    host: 'Podman by Zabbix Agent Active'
+                    key: 'podman.container.net.in[{#CONTAINER_NAME},{#USER}]'
+                - sortorder: '1'
+                  color: E53935
+                  item:
+                    host: 'Podman by Zabbix Agent Active'
+                    key: 'podman.container.net.out[{#CONTAINER_NAME},{#USER}]'
             - uuid: 2afa457ab1144504a98a29308f2541a9
               name: 'Container [{#CONTAINER_NAME}] ({#USER}): resource usage'
               graph_items:
-                - sortorder: '0'
-                  color: 1A7C11
+                - color: 1A7C11
                   item:
                     host: 'Podman by Zabbix Agent Active'
                     key: 'podman.container.cpu[{#CONTAINER_NAME},{#USER}]'
@@ -976,36 +1002,6 @@ zabbix_export:
                   item:
                     host: 'Podman by Zabbix Agent Active'
                     key: 'podman.container.mem.pct[{#CONTAINER_NAME},{#USER}]'
-            - uuid: 0ac706d7ccba4b7fb0e1b2c137d53ad0
-              name: 'Container [{#CONTAINER_NAME}] ({#USER}): network I/O'
-              graph_items:
-                - sortorder: '0'
-                  color: 1A7C11
-                  calc_fnc: AVG
-                  item:
-                    host: 'Podman by Zabbix Agent Active'
-                    key: 'podman.container.net.in[{#CONTAINER_NAME},{#USER}]'
-                - sortorder: '1'
-                  color: E53935
-                  calc_fnc: AVG
-                  item:
-                    host: 'Podman by Zabbix Agent Active'
-                    key: 'podman.container.net.out[{#CONTAINER_NAME},{#USER}]'
-            - uuid: 1160d9e8b2e8417298b59deacddaf85b
-              name: 'Container [{#CONTAINER_NAME}] ({#USER}): block I/O'
-              graph_items:
-                - sortorder: '0'
-                  color: 1A7C11
-                  calc_fnc: AVG
-                  item:
-                    host: 'Podman by Zabbix Agent Active'
-                    key: 'podman.container.block.in[{#CONTAINER_NAME},{#USER}]'
-                - sortorder: '1'
-                  color: E53935
-                  calc_fnc: AVG
-                  item:
-                    host: 'Podman by Zabbix Agent Active'
-                    key: 'podman.container.block.out[{#CONTAINER_NAME},{#USER}]'
           master_item:
             key: 'vfs.file.contents[/var/log/podman.json]'
           lld_macro_paths:
@@ -1068,8 +1064,8 @@ zabbix_export:
               key: 'podman.image.created[{#IMAGE_NAME},{#USER}]'
               delay: '0'
               history: 7d
-              value_type: TEXT
               trends: '0'
+              units: unixtime
               description: 'Image creation timestamp (ISO 8601).'
               preprocessing:
                 - type: JAVASCRIPT
@@ -1158,6 +1154,198 @@ zabbix_export:
                     });
                   });
                   return JSON.stringify(result);
+        - uuid: c9d968104cc548f2976a7d0deffe58b2
+          name: 'Network discovery'
+          type: DEPENDENT
+          key: podman.networks.discovery
+          delay: '0'
+          description: 'Discovers all Podman networks across all rootless users.'
+          item_prototypes:
+            - uuid: b9c5c1f9954c44ddabf340334ce3c75b
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): DNS enabled'
+              type: DEPENDENT
+              key: 'podman.network.dns[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              description: '1 if DNS is enabled for this network, 0 otherwise.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].dns_enabled.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: BOOL_TO_DECIMAL
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+            - uuid: b4c1de3c7a9d41939d98069d2729b18a
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): driver'
+              type: DEPENDENT
+              key: 'podman.network.driver[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].driver.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: unknown
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+            - uuid: a26c874a4e5c45fd98ac4e95407f0a31
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): interface'
+              type: DEPENDENT
+              key: 'podman.network.interface[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: 'Host network interface name.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].network_interface.first()'
+                  error_handler: CUSTOM_VALUE
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+            - uuid: ab50463cbbf141e8849dbcbcd972a2fd
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): internal'
+              type: DEPENDENT
+              key: 'podman.network.internal[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              description: '1 if network is internal (no external routing), 0 otherwise.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].internal.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: BOOL_TO_DECIMAL
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+            - uuid: 0e1b52894fa641e1a9cc29fc476acbc4
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): IPv6 enabled'
+              type: DEPENDENT
+              key: 'podman.network.ipv6[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              description: '1 if IPv6 is enabled, 0 otherwise.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].ipv6_enabled.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: 'false'
+                - type: BOOL_TO_DECIMAL
+                  parameters:
+                    - ''
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+            - uuid: 17992d30f96146e5b4cb71866f22035a
+              name: 'Network [{#NETWORK_NAME}] ({#USER}): subnet'
+              type: DEPENDENT
+              key: 'podman.network.subnet[{#NETWORK_NAME},{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              description: 'Primary subnet in CIDR notation.'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var d = JSON.parse(value);
+                      for (var i = 0; i < d.users.length; i++) {
+                        if (d.users[i].user !== '{#USER}') continue;
+                        var nets = d.users[i].networks || [];
+                        for (var j = 0; j < nets.length; j++) {
+                          if (nets[j].name !== '{#NETWORK_NAME}') continue;
+                          var s = nets[j].subnets || [];
+                          return s.length > 0 ? (s[0].subnet || '') : '';
+                        }
+                      }
+                      return '';
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1h
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: network
+                - tag: network
+                  value: '{#NETWORK_NAME}'
+          master_item:
+            key: 'vfs.file.contents[/var/log/podman.json]'
+          lld_macro_paths:
+            - lld_macro: '{#NETWORK_ID}'
+              path: $.id
+            - lld_macro: '{#NETWORK_NAME}'
+              path: $.name
+            - lld_macro: '{#USER}'
+              path: $.user
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var data = JSON.parse(value);
+                  var result = [];
+                  data.users.forEach(function(u) {
+                    (u.networks || []).forEach(function(n) {
+                      result.push({
+                        name: n.name,
+                        id: n.id ? n.id.substring(0, 12) : '',
+                        user: u.user
+                      });
+                    });
+                  });
+                  return JSON.stringify(result);
         - uuid: 8a8795c6731b4200bfc2d94c76672504
           name: 'Pod discovery'
           type: DEPENDENT
@@ -1208,7 +1396,7 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].pods[?(@.Name=="{#POD_NAME}")].Status.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: 'unknown'
+                  error_handler_params: unknown
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -1224,8 +1412,8 @@ zabbix_export:
                   expression: 'last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])="Degraded"'
                   name: 'Pod [{#POD_NAME}] ({#USER}): degraded (some containers not running)'
                   priority: AVERAGE
-                  manual_close: 'YES'
                   description: 'One or more containers in the pod are not running. Check pod status: podman pod inspect {#POD_NAME}. Check individual container states: podman ps -a --pod'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: pod
@@ -1235,8 +1423,8 @@ zabbix_export:
                   expression: 'last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])<>"Running" and last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])<>"Degraded"'
                   name: 'Pod [{#POD_NAME}] ({#USER}): not running (status: {ITEM.LASTVALUE1})'
                   priority: HIGH
-                  manual_close: 'YES'
                   description: 'Pod is not in Running or Degraded state. Current status: {ITEM.LASTVALUE1}. Start the pod: podman pod start {#POD_NAME}. Check pod details: podman pod inspect {#POD_NAME}'
+                  manual_close: 'YES'
                   tags:
                     - tag: component
                       value: pod
@@ -1274,6 +1462,44 @@ zabbix_export:
           delay: '0'
           description: 'Discovers all rootless Podman users active on this host.'
           item_prototypes:
+            - uuid: bbfa0bf5be1a46ddab6166097290c62c
+              name: 'User [{#USER}]: containers stopped'
+              type: DEPENDENT
+              key: 'podman.user.containers.exited[{#USER}]'
+              delay: '0'
+              history: 7d
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].system_info.store.containerStore.stopped.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: user
+                - tag: user
+                  value: '{#USER}'
+            - uuid: a1ab01ffc7e2474081957a7fa4b8c729
+              name: 'User [{#USER}]: containers paused'
+              type: DEPENDENT
+              key: 'podman.user.containers.paused[{#USER}]'
+              delay: '0'
+              history: 7d
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].system_info.store.containerStore.paused.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: user
+                - tag: user
+                  value: '{#USER}'
             - uuid: 91980d2273834aba9106e03e54c98160
               name: 'User [{#USER}]: containers running'
               type: DEPENDENT
@@ -1363,6 +1589,22 @@ zabbix_export:
                   value: user
                 - tag: user
                   value: '{#USER}'
+              trigger_prototypes:
+                - uuid: edeebb49c8dd4284a63928241d8f2cff
+                  expression: 'last(/Podman by Zabbix Agent Active/podman.user.images.unused[{#USER}])>{$PODMAN.IMAGES.UNUSED.MAX}'
+                  name: 'User [{#USER}]: {ITEM.LASTVALUE1} unused images'
+                  priority: INFO
+                  description: |
+                    {ITEM.LASTVALUE1} images for user {#USER} have no associated containers and are wasting disk space.
+                    List unused images: podman images --filter dangling=false
+                    Remove unused images (safe — only images with no containers): podman image prune -a
+                    WARNING: "podman image prune -a" removes ALL images not currently used by a container, including base images. Running containers will not be affected, but stopped containers that need their image to restart will lose it.
+                  manual_close: 'YES'
+                  tags:
+                    - tag: component
+                      value: user
+                    - tag: user
+                      value: '{#USER}'
             - uuid: e1e86c9a515e4dbdb440872997b67375
               name: 'User [{#USER}]: networks total'
               type: DEPENDENT
@@ -1392,84 +1634,6 @@ zabbix_export:
                 - type: JSONPATH
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].summary.pods_running.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: user
-                - tag: user
-                  value: '{#USER}'
-            - uuid: 32b89ab8ded4441baa13ea4ab85c0be0
-              name: 'User [{#USER}]: Podman version'
-              type: DEPENDENT
-              key: 'podman.user.version[{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: TEXT
-              trends: '0'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].system_info.version.Version.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'unknown'
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: user
-                - tag: user
-                  value: '{#USER}'
-            - uuid: d5e2a9a1b35e40c1ad7bcff5979d7da5
-              name: 'User [{#USER}]: volumes total'
-              type: DEPENDENT
-              key: 'podman.user.volumes.total[{#USER}]'
-              delay: '0'
-              history: 7d
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].summary.volumes_total.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: user
-                - tag: user
-                  value: '{#USER}'
-            - uuid: a1ab01ffc7e2474081957a7fa4b8c729
-              name: 'User [{#USER}]: containers paused'
-              type: DEPENDENT
-              key: 'podman.user.containers.paused[{#USER}]'
-              delay: '0'
-              history: 7d
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].system_info.store.containerStore.paused.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: '0'
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: user
-                - tag: user
-                  value: '{#USER}'
-            - uuid: bbfa0bf5be1a46ddab6166097290c62c
-              name: 'User [{#USER}]: containers stopped'
-              type: DEPENDENT
-              key: 'podman.user.containers.exited[{#USER}]'
-              delay: '0'
-              history: 7d
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].system_info.store.containerStore.stopped.first()'
                   error_handler: CUSTOM_VALUE
                   error_handler_params: '0'
               master_item:
@@ -1527,28 +1691,53 @@ zabbix_export:
                   value: user
                 - tag: user
                   value: '{#USER}'
-          trigger_prototypes:
-            - uuid: 789bdd52ebf049fbb3d9c9289e08f4a7
-              expression: 'last(/Podman by Zabbix Agent Active/podman.user.store.allocated[{#USER}])>0 and last(/Podman by Zabbix Agent Active/podman.user.store.used[{#USER}])/last(/Podman by Zabbix Agent Active/podman.user.store.allocated[{#USER}])*100>{$PODMAN.STORE.CRIT}'
-              name: 'User [{#USER}]: storage usage high (>{$PODMAN.STORE.CRIT}%)'
-              priority: WARNING
-              manual_close: 'YES'
-              description: 'Podman storage usage for user {#USER} exceeds {$PODMAN.STORE.CRIT}% of allocated space. Check details: podman system df. Reclaim space: podman system prune (WARNING: removes all stopped containers, unused images, and unused networks). For images only: podman image prune -a'
+            - uuid: 32b89ab8ded4441baa13ea4ab85c0be0
+              name: 'User [{#USER}]: Podman version'
+              type: DEPENDENT
+              key: 'podman.user.version[{#USER}]'
+              delay: '0'
+              history: 7d
+              value_type: TEXT
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].system_info.version.Version.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: unknown
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
               tags:
                 - tag: component
                   value: user
                 - tag: user
                   value: '{#USER}'
-            - uuid: edeebb49c8dd4284a63928241d8f2cff
-              expression: 'last(/Podman by Zabbix Agent Active/podman.user.images.unused[{#USER}])>{$PODMAN.IMAGES.UNUSED.MAX}'
-              name: 'User [{#USER}]: {ITEM.LASTVALUE1} unused images (>{$PODMAN.IMAGES.UNUSED.MAX})'
-              priority: INFO
+            - uuid: d5e2a9a1b35e40c1ad7bcff5979d7da5
+              name: 'User [{#USER}]: volumes total'
+              type: DEPENDENT
+              key: 'podman.user.volumes.total[{#USER}]'
+              delay: '0'
+              history: 7d
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.users[?(@.user=="{#USER}")].summary.volumes_total.first()'
+                  error_handler: CUSTOM_VALUE
+                  error_handler_params: '0'
+              master_item:
+                key: 'vfs.file.contents[/var/log/podman.json]'
+              tags:
+                - tag: component
+                  value: user
+                - tag: user
+                  value: '{#USER}'
+          trigger_prototypes:
+            - uuid: 789bdd52ebf049fbb3d9c9289e08f4a7
+              expression: 'last(/Podman by Zabbix Agent Active/podman.user.store.allocated[{#USER}])>0 and last(/Podman by Zabbix Agent Active/podman.user.store.used[{#USER}])/last(/Podman by Zabbix Agent Active/podman.user.store.allocated[{#USER}])*100>{$PODMAN.STORE.CRIT}'
+              name: 'User [{#USER}]: storage usage high (>{$PODMAN.STORE.CRIT}%)'
+              priority: WARNING
+              description: 'Podman storage usage for user {#USER} exceeds {$PODMAN.STORE.CRIT}% of allocated space. Check details: podman system df. Reclaim space: podman system prune (WARNING: removes all stopped containers, unused images, and unused networks). For images only: podman image prune -a'
               manual_close: 'YES'
-              description: |
-                {ITEM.LASTVALUE1} images for user {#USER} have no associated containers and are wasting disk space.
-                List unused images: podman images --filter dangling=false
-                Remove unused images (safe — only images with no containers): podman image prune -a
-                WARNING: "podman image prune -a" removes ALL images not currently used by a container, including base images. Running containers will not be affected, but stopped containers that need their image to restart will lose it.
               tags:
                 - tag: component
                   value: user
@@ -1565,193 +1754,6 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - '$.users[*]'
-        - uuid: c9d968104cc548f2976a7d0deffe58b2
-          name: 'Network discovery'
-          type: DEPENDENT
-          key: podman.networks.discovery
-          delay: '0'
-          description: 'Discovers all Podman networks across all rootless users.'
-          item_prototypes:
-            - uuid: b9c5c1f9954c44ddabf340334ce3c75b
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): DNS enabled'
-              type: DEPENDENT
-              key: 'podman.network.dns[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              description: '1 if DNS is enabled for this network, 0 otherwise.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].dns_enabled.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'false'
-                - type: BOOL_TO_DECIMAL
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-            - uuid: b4c1de3c7a9d41939d98069d2729b18a
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): driver'
-              type: DEPENDENT
-              key: 'podman.network.driver[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: TEXT
-              trends: '0'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].driver.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'unknown'
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-            - uuid: a26c874a4e5c45fd98ac4e95407f0a31
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): interface'
-              type: DEPENDENT
-              key: 'podman.network.interface[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: TEXT
-              trends: '0'
-              description: 'Host network interface name.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].network_interface.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-            - uuid: ab50463cbbf141e8849dbcbcd972a2fd
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): internal'
-              type: DEPENDENT
-              key: 'podman.network.internal[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              description: '1 if network is internal (no external routing), 0 otherwise.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].internal.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'false'
-                - type: BOOL_TO_DECIMAL
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-            - uuid: 0e1b52894fa641e1a9cc29fc476acbc4
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): IPv6 enabled'
-              type: DEPENDENT
-              key: 'podman.network.ipv6[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              description: '1 if IPv6 is enabled, 0 otherwise.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.users[?(@.user=="{#USER}")].networks[?(@.name=="{#NETWORK_NAME}")].ipv6_enabled.first()'
-                  error_handler: CUSTOM_VALUE
-                  error_handler_params: 'false'
-                - type: BOOL_TO_DECIMAL
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-            - uuid: 17992d30f96146e5b4cb71866f22035a
-              name: 'Network [{#NETWORK_NAME}] ({#USER}): subnet'
-              type: DEPENDENT
-              key: 'podman.network.subnet[{#NETWORK_NAME},{#USER}]'
-              delay: '0'
-              history: 7d
-              value_type: TEXT
-              trends: '0'
-              description: 'Primary subnet in CIDR notation.'
-              preprocessing:
-                - type: JAVASCRIPT
-                  parameters:
-                    - |
-                      var d = JSON.parse(value);
-                      for (var i = 0; i < d.users.length; i++) {
-                        if (d.users[i].user !== '{#USER}') continue;
-                        var nets = d.users[i].networks || [];
-                        for (var j = 0; j < nets.length; j++) {
-                          if (nets[j].name !== '{#NETWORK_NAME}') continue;
-                          var s = nets[j].subnets || [];
-                          return s.length > 0 ? (s[0].subnet || '') : '';
-                        }
-                      }
-                      return '';
-                - type: DISCARD_UNCHANGED_HEARTBEAT
-                  parameters:
-                    - 1h
-              master_item:
-                key: 'vfs.file.contents[/var/log/podman.json]'
-              tags:
-                - tag: component
-                  value: network
-                - tag: network
-                  value: '{#NETWORK_NAME}'
-          master_item:
-            key: 'vfs.file.contents[/var/log/podman.json]'
-          lld_macro_paths:
-            - lld_macro: '{#NETWORK_ID}'
-              path: $.id
-            - lld_macro: '{#NETWORK_NAME}'
-              path: $.name
-            - lld_macro: '{#USER}'
-              path: $.user
-          preprocessing:
-            - type: JAVASCRIPT
-              parameters:
-                - |
-                  var data = JSON.parse(value);
-                  var result = [];
-                  data.users.forEach(function(u) {
-                    (u.networks || []).forEach(function(n) {
-                      result.push({
-                        name: n.name,
-                        id: n.id ? n.id.substring(0, 12) : '',
-                        user: u.user
-                      });
-                    });
-                  });
-                  return JSON.stringify(result);
         - uuid: 07d18104fec248d890e3ecb6cfdae4bf
           name: 'Volume discovery'
           type: DEPENDENT
@@ -1773,7 +1775,6 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].volumes[?(@.Name=="{#VOLUME_NAME}")].CreatedAt.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: ''
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -1797,7 +1798,7 @@ zabbix_export:
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].volumes[?(@.Name=="{#VOLUME_NAME}")].Driver.first()'
                   error_handler: CUSTOM_VALUE
-                  error_handler_params: 'local'
+                  error_handler_params: local
                 - type: DISCARD_UNCHANGED_HEARTBEAT
                   parameters:
                     - 1h
@@ -1872,15 +1873,15 @@ zabbix_export:
         - macro: '{$PODMAN.IMAGE.USER.NOT_MATCHES}'
           value: ^root$
           description: 'LLD filter: skip images owned by these users (regex, default: root)'
+        - macro: '{$PODMAN.IMAGES.UNUSED.MAX}'
+          value: '3'
+          description: 'INFO trigger if unused images per user exceed this count'
         - macro: '{$PODMAN.MEM.CRIT}'
           value: '90'
           description: 'Container memory usage threshold for trigger (%)'
         - macro: '{$PODMAN.NODATA.TIMEOUT}'
           value: 5m
           description: 'Alert if collector JSON is not updated within this period'
-        - macro: '{$PODMAN.IMAGES.UNUSED.MAX}'
-          value: '3'
-          description: 'INFO trigger if unused images per user exceed this count'
         - macro: '{$PODMAN.STORE.CRIT}'
           value: '90'
           description: 'Storage usage threshold per user for trigger (%)'
@@ -1895,9 +1896,7 @@ zabbix_export:
               widgets:
                 - type: clock
                   name: 'Server Time'
-                  x: '0'
-                  'y': '0'
-                  width: '6'
+                  width: '24'
                   height: '4'
                   fields:
                     - type: INTEGER
@@ -1909,11 +1908,47 @@ zabbix_export:
                     - type: INTEGER
                       name: time_type
                       value: '1'
+                - type: problems
+                  name: 'Active Problems'
+                  'y': '4'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: rf_rate
+                      value: '60'
+                - type: graphprototype
+                  name: 'Container CPU & Memory'
+                  'y': '9'
+                  width: '72'
+                  height: '8'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'Podman by Zabbix Agent Active'
+                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): resource usage'
+                    - type: STRING
+                      name: reference
+                      value: PDMNA
+                - type: graphprototype
+                  name: 'Container Network I/O'
+                  'y': '17'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'Podman by Zabbix Agent Active'
+                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): network I/O'
+                    - type: STRING
+                      name: reference
+                      value: PDMNB
                 - type: item
                   name: 'Last Collection'
-                  x: '6'
-                  'y': '0'
-                  width: '15'
+                  x: '24'
+                  width: '24'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1930,11 +1965,25 @@ zabbix_export:
                     - type: INTEGER
                       name: show.1
                       value: '2'
+                - type: graphprototype
+                  name: 'Container Block I/O'
+                  x: '36'
+                  'y': '17'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: GRAPH_PROTOTYPE
+                      name: graphid.0
+                      value:
+                        host: 'Podman by Zabbix Agent Active'
+                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): block I/O'
+                    - type: STRING
+                      name: reference
+                      value: PDMNC
                 - type: item
                   name: 'Collector Version'
-                  x: '21'
-                  'y': '0'
-                  width: '15'
+                  x: '48'
+                  width: '24'
                   height: '4'
                   fields:
                     - type: ITEM
@@ -1951,70 +2000,3 @@ zabbix_export:
                     - type: INTEGER
                       name: show.1
                       value: '2'
-                - type: problems
-                  name: 'Active Problems'
-                  x: '0'
-                  'y': '4'
-                  width: '36'
-                  height: '5'
-                  fields:
-                    - type: INTEGER
-                      name: rf_rate
-                      value: '60'
-                    - type: INTEGER
-                      name: show_suppressed
-                      value: '0'
-                - type: graphprototype
-                  name: 'Container CPU & Memory'
-                  x: '0'
-                  'y': '9'
-                  width: '36'
-                  height: '8'
-                  fields:
-                    - type: INTEGER
-                      name: columns
-                      value: '2'
-                    - type: GRAPH_PROTOTYPE
-                      name: graphid.0
-                      value:
-                        host: 'Podman by Zabbix Agent Active'
-                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): resource usage'
-                    - type: STRING
-                      name: reference
-                      value: PDMNA
-                - type: graphprototype
-                  name: 'Container Network I/O'
-                  x: '0'
-                  'y': '17'
-                  width: '18'
-                  height: '7'
-                  fields:
-                    - type: INTEGER
-                      name: columns
-                      value: '2'
-                    - type: GRAPH_PROTOTYPE
-                      name: graphid.0
-                      value:
-                        host: 'Podman by Zabbix Agent Active'
-                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): network I/O'
-                    - type: STRING
-                      name: reference
-                      value: PDMNB
-                - type: graphprototype
-                  name: 'Container Block I/O'
-                  x: '18'
-                  'y': '17'
-                  width: '18'
-                  height: '7'
-                  fields:
-                    - type: INTEGER
-                      name: columns
-                      value: '2'
-                    - type: GRAPH_PROTOTYPE
-                      name: graphid.0
-                      value:
-                        host: 'Podman by Zabbix Agent Active'
-                        name: 'Container [{#CONTAINER_NAME}] ({#USER}): block I/O'
-                    - type: STRING
-                      name: reference
-                      value: PDMNC
