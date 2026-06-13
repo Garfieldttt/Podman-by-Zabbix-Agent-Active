@@ -47,6 +47,17 @@ Import `7.0/template_podman_by_zabbix_agent.yaml` via **Data collection → Temp
 
 Link **Podman by Zabbix Agent Active** to the host. No additional agent configuration required.
 
+## Large environments
+
+If not all containers/pods appear in Zabbix, increase these values in `/etc/zabbix/zabbix_agent2.conf`:
+
+```
+BufferSize=1000
+Timeout=30
+```
+
+Then restart the agent.
+
 ## Macros used
 
 |Name|Description|Default|Type|
