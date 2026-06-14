@@ -23,7 +23,7 @@ chmod 750 /usr/local/bin/zabbix_podman_collect.sh
 ### 2. Add cron job
 
 ```
-* * * * * root /usr/local/bin/zabbix_podman_collect.sh
+*/5 * * * * root /usr/local/bin/zabbix_podman_collect.sh
 ```
 
 Optional environment variables:
