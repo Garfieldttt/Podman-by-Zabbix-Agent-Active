@@ -1439,6 +1439,9 @@ zabbix_export:
                   priority: AVERAGE
                   description: 'One or more containers in the pod are not running. Check pod status: podman pod inspect {#POD_NAME}. Check individual container states: podman ps -a --pod'
                   manual_close: 'YES'
+                  dependencies:
+                    - name: 'Pod [{#POD_NAME}] ({#USER}): not running (status: {ITEM.LASTVALUE1})'
+                      expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)>0'
                   tags:
                     - tag: component
                       value: pod
