@@ -9,11 +9,10 @@ zabbix_export:
       name: 'Podman by Zabbix Agent Active'
       description: |
         Monitors rootful and rootless Podman containers via a central JSON collector script.
-        Requires zabbix_podman_collect.sh (v3) running as root via cron (every 60s).
         
         Collector output: /var/log/podman.json
         Supports multiple rootless users + root on the same host.
-        Uses runuser-based isolation (no DOCKER_HOST fallback to root daemon).
+        If you need help, visit https://github.com/Garfieldttt/Podman-by-Zabbix-Agent-Active
       groups:
         - name: Templates/Virtualization
       items:
@@ -55,7 +54,6 @@ zabbix_export:
           name: 'Podman: raw data'
           type: ZABBIX_ACTIVE
           key: 'vfs.file.contents[/var/log/podman.json]'
-          delay: '{$PODMAN.UPDATE.INTERVAL}'
           history: '0'
           value_type: TEXT
           trends: '0'
@@ -1885,9 +1883,6 @@ zabbix_export:
         - macro: '{$PODMAN.STORE.CRIT}'
           value: '90'
           description: 'Storage usage threshold per user for trigger (%)'
-        - macro: '{$PODMAN.UPDATE.INTERVAL}'
-          value: 60s
-          description: 'How often Zabbix reads the collector JSON (must match timer interval)'
       dashboards:
         - uuid: bfe7d868262d4bc4a338a40c3cf1cd2d
           name: 'Podman Overview'
