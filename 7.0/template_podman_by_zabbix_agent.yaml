@@ -1387,17 +1387,44 @@ zabbix_export:
               key: 'podman.pod.status[{#POD_NAME},{#USER}]'
               delay: '0'
               history: 7d
-              value_type: TEXT
+              value_type: FLOAT
               trends: '0'
+              valuemap:
+                name: 'Pod status'
               preprocessing:
                 - type: JSONPATH
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].pods[?(@.Name=="{#POD_NAME}")].Status.first()'
                   error_handler: CUSTOM_VALUE
                   error_handler_params: unknown
-                - type: DISCARD_UNCHANGED_HEARTBEAT
+                - type: STR_REPLACE
                   parameters:
-                    - 1h
+                    - Running
+                    - '0'
+                - type: STR_REPLACE
+                  parameters:
+                    - Created
+                    - '1'
+                - type: STR_REPLACE
+                  parameters:
+                    - Stopped
+                    - '2'
+                - type: STR_REPLACE
+                  parameters:
+                    - Exited
+                    - '3'
+                - type: STR_REPLACE
+                  parameters:
+                    - Paused
+                    - '4'
+                - type: STR_REPLACE
+                  parameters:
+                    - Dead
+                    - '5'
+                - type: STR_REPLACE
+                  parameters:
+                    - Degraded
+                    - '6'
               master_item:
                 key: 'vfs.file.contents[/var/log/podman.json]'
               tags:
@@ -1407,7 +1434,7 @@ zabbix_export:
                   value: '{#POD_NAME}'
               trigger_prototypes:
                 - uuid: 17c4c1a2c75f442ea89d0d55a9191d9e
-                  expression: 'last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])="Degraded"'
+                  expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)=6'
                   name: 'Pod [{#POD_NAME}] ({#USER}): degraded (some containers not running)'
                   priority: AVERAGE
                   description: 'One or more containers in the pod are not running. Check pod status: podman pod inspect {#POD_NAME}. Check individual container states: podman ps -a --pod'
@@ -1418,7 +1445,7 @@ zabbix_export:
                     - tag: pod
                       value: '{#POD_NAME}'
                 - uuid: 50adad9c79294690841fa04a012e261c
-                  expression: 'last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])<>"Running" and last(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}])<>"Degraded"'
+                  expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)>0'
                   name: 'Pod [{#POD_NAME}] ({#USER}): not running (status: {ITEM.LASTVALUE1})'
                   priority: HIGH
                   description: 'Pod is not in Running or Degraded state. Current status: {ITEM.LASTVALUE1}. Start the pod: podman pod start {#POD_NAME}. Check pod details: podman pod inspect {#POD_NAME}'
@@ -1995,3 +2022,21 @@ zabbix_export:
                     - type: INTEGER
                       name: show.1
                       value: '2'
+      valuemaps:
+        - uuid: df479fa2dbb14de5a3ae526c03dc4179
+          name: 'Pod status'
+          mappings:
+            - value: '0'
+              newvalue: Running
+            - value: '1'
+              newvalue: Created
+            - value: '2'
+              newvalue: Stopped
+            - value: '3'
+              newvalue: Exited
+            - value: '4'
+              newvalue: Paused
+            - value: '5'
+              newvalue: Dead
+            - value: '6'
+              newvalue: Degraded
