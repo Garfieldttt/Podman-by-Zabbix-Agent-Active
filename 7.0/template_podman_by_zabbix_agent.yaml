@@ -896,17 +896,43 @@ zabbix_export:
               key: 'podman.container.state[{#CONTAINER_NAME},{#USER}]'
               delay: '0'
               history: 7d
-              value_type: TEXT
               trends: '0'
+              valuemap:
+                name: 'Container status'
               preprocessing:
                 - type: JSONPATH
                   parameters:
                     - '$.users[?(@.user=="{#USER}")].containers[?(@.Id=="{#CONTAINER_ID}")].State.first()'
                   error_handler: CUSTOM_VALUE
                   error_handler_params: unknown
-                - type: DISCARD_UNCHANGED_HEARTBEAT
+                - type: STR_REPLACE
                   parameters:
-                    - 1h
+                    - created
+                    - '0'
+                - type: STR_REPLACE
+                  parameters:
+                    - initialized
+                    - '1'
+                - type: STR_REPLACE
+                  parameters:
+                    - running
+                    - '2'
+                - type: STR_REPLACE
+                  parameters:
+                    - paused
+                    - '3'
+                - type: STR_REPLACE
+                  parameters:
+                    - exited
+                    - '4'
+                - type: STR_REPLACE
+                  parameters:
+                    - stopped
+                    - '5'
+                - type: STR_REPLACE
+                  parameters:
+                    - unknown
+                    - '6'
               master_item:
                 key: 'vfs.file.contents[/var/log/podman.json]'
               tags:
@@ -916,7 +942,7 @@ zabbix_export:
                   value: '{#CONTAINER_NAME}'
               trigger_prototypes:
                 - uuid: e1b4bdad456647e3b25788934707b6c6
-                  expression: 'last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])<>"running" and last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])<>"exited"'
+                  expression: 'min(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}],500)>3'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): not running (state: {ITEM.LASTVALUE1})'
                   priority: HIGH
                   description: 'Container is in an unexpected state (not "running" and not "exited"). Current state: {ITEM.LASTVALUE1}. Investigate: podman inspect {#CONTAINER_NAME}. Start if needed: podman start {#CONTAINER_NAME}'
@@ -2026,6 +2052,23 @@ zabbix_export:
                       name: show.1
                       value: '2'
       valuemaps:
+        - uuid: b534fce6cfc5446e822057eb8f136aa4
+          name: 'Container status'
+          mappings:
+            - value: '0'
+              newvalue: created
+            - value: '1'
+              newvalue: initialized
+            - value: '2'
+              newvalue: running
+            - value: '3'
+              newvalue: paused
+            - value: '4'
+              newvalue: exited
+            - value: '5'
+              newvalue: stopped
+            - value: '6'
+              newvalue: unknown
         - uuid: df479fa2dbb14de5a3ae526c03dc4179
           name: 'Pod status'
           mappings:
