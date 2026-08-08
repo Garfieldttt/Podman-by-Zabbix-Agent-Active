@@ -927,8 +927,20 @@ zabbix_export:
                     - '4'
                 - type: STR_REPLACE
                   parameters:
+                    - stopping
+                    - '7'
+                - type: STR_REPLACE
+                  parameters:
                     - stopped
                     - '5'
+                - type: STR_REPLACE
+                  parameters:
+                    - configured
+                    - '8'
+                - type: STR_REPLACE
+                  parameters:
+                    - removing
+                    - '9'
                 - type: STR_REPLACE
                   parameters:
                     - unknown
@@ -945,7 +957,7 @@ zabbix_export:
                   expression: 'min(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}],500)>3'
                   name: 'Container [{#CONTAINER_NAME}] ({#USER}): not running (state: {ITEM.LASTVALUE1})'
                   priority: HIGH
-                  description: 'Container is in an unexpected state (not "running" and not "exited"). Current state: {ITEM.LASTVALUE1}. Investigate: podman inspect {#CONTAINER_NAME}. Start if needed: podman start {#CONTAINER_NAME}'
+                  description: 'Container state has been above "paused" (code >3) for the whole evaluation window, meaning exited, stopped, unknown, stopping, configured or removing. Current state: {ITEM.LASTVALUE1}. Note that "created", "initialized" and "paused" (codes 0, 1, 3) do not raise this trigger. Investigate: podman inspect {#CONTAINER_NAME}. Start if needed: podman start {#CONTAINER_NAME}'
                   manual_close: 'YES'
                   tags:
                     - tag: component
@@ -979,7 +991,7 @@ zabbix_export:
                   value: '{#CONTAINER_NAME}'
           trigger_prototypes:
             - uuid: 8d003adfe10948a986333b85a36ace04
-              expression: 'last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])="exited" and last(/Podman by Zabbix Agent Active/podman.container.exitcode[{#CONTAINER_NAME},{#USER}])>0'
+              expression: 'last(/Podman by Zabbix Agent Active/podman.container.state[{#CONTAINER_NAME},{#USER}])=4 and last(/Podman by Zabbix Agent Active/podman.container.exitcode[{#CONTAINER_NAME},{#USER}])>0'
               name: 'Container [{#CONTAINER_NAME}] ({#USER}): exited with error (code: {ITEM.LASTVALUE2})'
               priority: AVERAGE
               description: 'Container exited with a non-zero exit code ({ITEM.LASTVALUE2}). Check logs for the reason: podman logs {#CONTAINER_NAME}. Common codes: 1=application error, 137=OOM/SIGKILL, 143=SIGTERM.'
@@ -1451,6 +1463,10 @@ zabbix_export:
                   parameters:
                     - Degraded
                     - '6'
+                - type: STR_REPLACE
+                  parameters:
+                    - Error
+                    - '7'
               master_item:
                 key: 'vfs.file.contents[/var/log/podman.json]'
               tags:
@@ -1465,16 +1481,13 @@ zabbix_export:
                   priority: AVERAGE
                   description: 'One or more containers in the pod are not running. Check pod status: podman pod inspect {#POD_NAME}. Check individual container states: podman ps -a --pod'
                   manual_close: 'YES'
-                  dependencies:
-                    - name: 'Pod [{#POD_NAME}] ({#USER}): not running (status: {ITEM.LASTVALUE1})'
-                      expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)>0'
                   tags:
                     - tag: component
                       value: pod
                     - tag: pod
                       value: '{#POD_NAME}'
                 - uuid: 50adad9c79294690841fa04a012e261c
-                  expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)>0'
+                  expression: 'min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)>0 and min(/Podman by Zabbix Agent Active/podman.pod.status[{#POD_NAME},{#USER}],5m)<>6'
                   name: 'Pod [{#POD_NAME}] ({#USER}): not running (status: {ITEM.LASTVALUE1})'
                   priority: HIGH
                   description: 'Pod is not in Running or Degraded state. Current status: {ITEM.LASTVALUE1}. Start the pod: podman pod start {#POD_NAME}. Check pod details: podman pod inspect {#POD_NAME}'
@@ -2069,6 +2082,12 @@ zabbix_export:
               newvalue: stopped
             - value: '6'
               newvalue: unknown
+            - value: '7'
+              newvalue: stopping
+            - value: '8'
+              newvalue: configured
+            - value: '9'
+              newvalue: removing
         - uuid: df479fa2dbb14de5a3ae526c03dc4179
           name: 'Pod status'
           mappings:
@@ -2086,3 +2105,5 @@ zabbix_export:
               newvalue: Dead
             - value: '6'
               newvalue: Degraded
+            - value: '7'
+              newvalue: Error
