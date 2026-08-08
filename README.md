@@ -9,6 +9,8 @@ The collector script (`scripts/zabbix_podman_collect.sh`) runs every minute as r
 ## Requirements
 
 - Zabbix Agent (active) ≥ 7.0
+- Podman ≥ 4.0
+- Python 3
 - Linux with rootless Podman support (tested on Debian 13; other distributions not tested)
 
 ## Setup
@@ -96,7 +98,7 @@ There are no template links in this template.
 |Podman: raw data|Master item full JSON from collector script|`Zabbix agent (active)`|`vfs.file.contents[/var/log/podman.json]`<p>Update: {$PODMAN.UPDATE.INTERVAL}</p>|
 |Podman: last collection timestamp|Timestamp of last successful collector run|`Dependent item`|`podman.collected_at`<p>Update: 0</p>|
 |Podman: collector version|Version of the collector script|`Dependent item`|`podman.collector_version`<p>Update: 0</p>|
-|Container [{#CONTAINER_NAME}] ({#USER}): state|Container state: running / exited / paused / created|`Dependent item`|`podman.container.state[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
+|Container [{#CONTAINER_NAME}] ({#USER}): state|Numeric container state with value map: 0 created, 1 initialized, 2 running, 3 paused, 4 exited, 5 stopped, 6 unknown, 7 stopping, 8 configured, 9 removing|`Dependent item`|`podman.container.state[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): CPU usage|CPU usage in % (snapshot)|`Dependent item`|`podman.container.cpu[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): memory usage|Memory usage in % of limit|`Dependent item`|`podman.container.mem.pct[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): memory used|Memory used in bytes|`Dependent item`|`podman.container.mem.used[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
@@ -111,7 +113,7 @@ There are no template links in this template.
 |Container [{#CONTAINER_NAME}] ({#USER}): exit code|Last exit code (0 = clean exit)|`Dependent item`|`podman.container.exitcode[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): OOM killed|1 if container was killed by the OOM killer|`Dependent item`|`podman.container.oom_killed[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Container [{#CONTAINER_NAME}] ({#USER}): ports|Published port mappings|`Dependent item`|`podman.container.ports[{#CONTAINER_NAME},{#USER}]`<p>Update: 0, LLD</p>|
-|Pod [{#POD_NAME}] ({#USER}): status|Pod status: Running / Degraded / Stopped / Exited|`Dependent item`|`podman.pod.status[{#POD_NAME},{#USER}]`<p>Update: 0, LLD</p>|
+|Pod [{#POD_NAME}] ({#USER}): status|Numeric pod status with value map: 0 Running, 1 Created, 2 Stopped, 3 Exited, 4 Paused, 5 Dead, 6 Degraded, 7 Error|`Dependent item`|`podman.pod.status[{#POD_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Pod [{#POD_NAME}] ({#USER}): container count|Total number of containers in the pod|`Dependent item`|`podman.pod.containers[{#POD_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Image [{#IMAGE_NAME}] ({#USER}): created|Image creation timestamp|`Dependent item`|`podman.image.created[{#IMAGE_NAME},{#USER}]`<p>Update: 0, LLD</p>|
 |Image [{#IMAGE_NAME}] ({#USER}): size|Image size in bytes|`Dependent item`|`podman.image.size[{#IMAGE_NAME},{#USER}]`<p>Update: 0, LLD</p>|
@@ -133,14 +135,25 @@ There are no template links in this template.
 |Name|Description|Expression|Priority|
 |----|-----------|----------|--------|
 |Podman: collector data not updated for {$PODMAN.NODATA.TIMEOUT}|JSON file not refreshed collector may have stopped|`nodata(/Podman by Zabbix Agent Active/vfs.file.contents[/var/log/podman.json],{$PODMAN.NODATA.TIMEOUT})=1`|Warning|
-|Container [{#CONTAINER_NAME}] ({#USER}): not running|Container is in an unexpected state (not running and not exited)|`last(/.../podman.container.state[...]))<>"running" and last(/.../podman.container.state[...])<>"exited"`|High|
-|Container [{#CONTAINER_NAME}] ({#USER}): exited with error|Container exited with a non-zero exit code|`last(/.../podman.container.state[...])="exited" and last(/.../podman.container.exitcode[...])>0`|Average|
+|Container [{#CONTAINER_NAME}] ({#USER}): not running|State code above 3 for the whole window: exited, stopped, unknown, stopping, configured or removing. Codes 0, 1 and 3 do not raise it|`min(/.../podman.container.state[...],500)>3`|High|
+|Container [{#CONTAINER_NAME}] ({#USER}): exited with error|Container exited with a non-zero exit code|`last(/.../podman.container.state[...])=4 and last(/.../podman.container.exitcode[...])>0`|Average|
 |Container [{#CONTAINER_NAME}] ({#USER}): restarted|Restart count has increased|`change(/.../podman.container.restarts[...])>0`|Warning|
 |Container [{#CONTAINER_NAME}] ({#USER}): health check failing|Health check status is unhealthy|`last(/.../podman.container.health[...])="unhealthy"`|Average|
 |Container [{#CONTAINER_NAME}] ({#USER}): killed by OOM killer|Container was terminated due to out-of-memory|`last(/.../podman.container.oom_killed[...])=1`|Average|
 |Container [{#CONTAINER_NAME}] ({#USER}): CPU high|Average CPU > {$PODMAN.CPU.CRIT}% over 5 minutes|`avg(/.../podman.container.cpu[...],5m)>{$PODMAN.CPU.CRIT}`|Warning|
 |Container [{#CONTAINER_NAME}] ({#USER}): memory high|Average memory % > {$PODMAN.MEM.CRIT}% over 5 minutes|`avg(/.../podman.container.mem.pct[...],5m)>{$PODMAN.MEM.CRIT}`|Warning|
-|Pod [{#POD_NAME}] ({#USER}): not running|Pod is not in Running or Degraded state|`last(/.../podman.pod.status[...])<>"Running" and last(/.../podman.pod.status[...])<>"Degraded"`|High|
-|Pod [{#POD_NAME}] ({#USER}): degraded|Some containers in the pod are not running|`last(/.../podman.pod.status[...])="Degraded"`|Average|
+|Pod [{#POD_NAME}] ({#USER}): not running|Pod status is not Running and not Degraded|`min(/.../podman.pod.status[...],5m)>0 and min(/.../podman.pod.status[...],5m)<>6`|High|
+|Pod [{#POD_NAME}] ({#USER}): degraded|Some containers in the pod are not running|`min(/.../podman.pod.status[...],5m)=6`|Average|
 |User [{#USER}]: storage usage high|Used/Allocated storage > {$PODMAN.STORE.CRIT}%|`last(.../store.allocated[...])>0 and last(.../store.used[...])/last(.../store.allocated[...])*100>{$PODMAN.STORE.CRIT}`|Warning|
 |User [{#USER}]: {ITEM.LASTVALUE1} unused images|Unused image count > {$PODMAN.IMAGES.UNUSED.MAX} consider running `podman image prune`|`last(/.../podman.user.images.unused[...])>{$PODMAN.IMAGES.UNUSED.MAX}`|Info|
+
+## State comparisons
+
+`podman.container.state` and `podman.pod.status` are numeric items with a value map. Triggers must compare against the numeric code, never against the mapped label, because Zabbix evaluates the raw value. A state that no STR_REPLACE step maps to a number leaves the item unsupported and silently disables every trigger on it, so any new state podman introduces has to be added to both the preprocessing chain and the value map.
+
+## Tested with
+
+- Podman 4.9.x / 5.x on Debian 13
+- Zabbix 7.0 LTS
+
+Other distributions have not been tested.
