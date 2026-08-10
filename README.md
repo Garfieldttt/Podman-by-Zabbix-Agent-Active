@@ -1,4 +1,4 @@
-# Podman by Zabbix Agent Active
+ sc  # Podman by Zabbix Agent Active
 
 ## Overview
 
@@ -18,7 +18,7 @@ The collector script (`scripts/zabbix_podman_collect.sh`) runs every minute as r
 ### 1. Deploy collector script
 
 ```bash
-cp scripts/zabbix_podman_collect.sh /usr/local/bin/
+cp Podman-by-Zabbix-Agent-Active/scripts/zabbix_podman_collect.sh /usr/local/bin/
 chmod 750 /usr/local/bin/zabbix_podman_collect.sh
 ```
 
